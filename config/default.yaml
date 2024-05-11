@@ -1,0 +1,25 @@
+%YAML:1.0
+# camera intrinsics
+camera.fx: 517.3
+camera.fy: 516.5
+camera.cx: 325.1
+camera.cy: 249.7
+
+Camera.width: 1241
+Camera.height: 376
+
+Camera1.fx: 718.856
+Camera1.fy: 718.856
+Camera1.cx: 607.1928
+Camera1.cy: 185.2157
+
+Camera2.fx: 718.856
+Camera2.fy: 718.856
+Camera2.cx: 607.1928
+Camera2.cy: 185.2157
+
+Stereo.b: 0.53716
+
+num_features: 150
+num_features_init: 50
+num_features_tracking: 50
