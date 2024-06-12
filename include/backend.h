@@ -49,9 +49,11 @@ class Backend {
 
     //手写优化
     void Optimize2(Map::KeyframesType& keyframes, Map::LandmarksType& landmarks);
+    void Optimize4(Map::KeyframesType& keyframes, Map::LandmarksType& landmarks);
 
     //ceres优化
     void Optimize3(Map::KeyframesType& keyframes, Map::LandmarksType& landmarks);
+
 
     std::shared_ptr<Map> map_;
     std::thread backend_thread_;

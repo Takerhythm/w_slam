@@ -18,8 +18,7 @@
 namespace slam {
 
 Frontend::Frontend() {
-    gftt_ =
-        cv::GFTTDetector::create(Config::Get<int>("num_features"), 0.01, 20);
+    gftt_ = cv::GFTTDetector::create(Config::Get<int>("num_features"), 0.01, 20);
     num_features_init_ = Config::Get<int>("num_features_init");
     num_features_ = Config::Get<int>("num_features");
 }
@@ -59,10 +58,11 @@ Sophus::SE3d Frontend::AddFrame(slam::Frame::Ptr frame) {
 
 bool Frontend::Track() {
     if (last_frame_) {
+        //恒速运动
         current_frame_->SetPose(relative_motion_ * last_frame_->Pose());
     }
 
-    int num_track_last = TrackLastFrame();
+    TrackLastFrame();
     tracking_inliers_ = EstimateCurrentPose();
 
     if (tracking_inliers_ > num_features_tracking_) {
@@ -95,7 +95,9 @@ bool Frontend::InsertKeyframe() {
     LOG(INFO) << "Set frame " << current_frame_->id_ << " as keyframe "
               << current_frame_->keyframe_id_;
 
+    //对关键帧的特征点对应的地图点加入对该特征点的观测
     SetObservationsForKeyFrame();
+    //对关键帧检测新的特征点并三角化
     DetectFeatures();  // detect new features
 
     // track in right image
@@ -103,6 +105,7 @@ bool Frontend::InsertKeyframe() {
     // triangulate map points
     TriangulateNewPoints();
     // update backend because we have a new keyframe
+    //后端优化 未使用滑动窗口
     backend_->UpdateMap();
 
     if (viewer_) viewer_->UpdateMap();
@@ -231,7 +234,7 @@ int Frontend::EstimateCurrentPose() {
     // Set pose and outlier
     current_frame_->SetPose(vertex_pose->estimate());
 
-    LOG(INFO) << "Current Pose = \n" << current_frame_->Pose().matrix();
+    //LOG(INFO) << "Current Pose = \n" << current_frame_->Pose().matrix();
 
     for (auto &feat : features) {
         if (feat->is_outlier_) {
@@ -285,22 +288,19 @@ int Frontend::TrackLastFrame() {
 }
 
 bool Frontend::StereoInit() {
-    int num_features_left = DetectFeatures();
+    DetectFeatures();
     int num_coor_features = FindFeaturesInRight();
     if (num_coor_features < num_features_init_) {
         return false;
     }
 
-    bool build_map_success = BuildInitMap();
-    if (build_map_success) {
-        status_ = FrontendStatus::TRACKING_GOOD;
-        if (viewer_) {
-            viewer_->AddCurrentFrame(current_frame_);
-            viewer_->UpdateMap();
-        }
-        return true;
+    BuildInitMap();
+    status_ = FrontendStatus::TRACKING_GOOD;
+    if (viewer_) {
+        viewer_->AddCurrentFrame(current_frame_);
+        viewer_->UpdateMap();
     }
-    return false;
+    return true;
 }
 
 int Frontend::DetectFeatures() {

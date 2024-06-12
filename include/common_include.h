@@ -33,6 +33,7 @@ typedef Eigen::Matrix<double, 5, 3> Mat53;
 typedef Eigen::Matrix<double, 4, 3> Mat43;
 typedef Eigen::Matrix<double, 4, 2> Mat42;
 typedef Eigen::Matrix<double, 3, 3> Mat33;
+typedef Eigen::Matrix<double, 2, 3> Mat23;
 typedef Eigen::Matrix<double, 2, 2> Mat22;
 typedef Eigen::Matrix<double, 8, 8> Mat88;
 typedef Eigen::Matrix<double, 7, 7> Mat77;
@@ -112,5 +113,18 @@ using cv::Mat;
 
 // glog
 #include <glog/logging.h>
+
+// Quaternions
+typedef Eigen::Quaterniond Qd;
+typedef Eigen::Quaternionf Qf;
+
+// Vector of Eigen vectors
+typedef std::vector<Vec2, Eigen::aligned_allocator<Vec2>> VecVec2;
+typedef std::vector<Vec3, Eigen::aligned_allocator<Vec3>> VecVec3;
+typedef std::vector<Vec2f, Eigen::aligned_allocator<Vec2f>> VecVec2f;
+typedef std::vector<Vec3f, Eigen::aligned_allocator<Vec3f>> VecVec3f;
+
+// Map of Eigen matrix
+typedef std::map<unsigned long, MatXX, std::less<unsigned long>, Eigen::aligned_allocator<MatXX>> MapMatXX;
 
 #endif  // SLAM_COMMON_INCLUDE_H

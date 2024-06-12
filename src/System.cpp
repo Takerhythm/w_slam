@@ -18,7 +18,15 @@ bool System::Init() {
     CHECK_EQ(dataset_->Init(), true);*/
 
     // create components and links
-    frontend_ = std::make_shared<Frontend>();
+    try{
+        //这种写法会报错，为什么
+        //frontend_ = std::make_shared<Frontend>();
+        frontend_ = Frontend::Ptr(new Frontend());
+    }
+    catch(const std::exception& e){
+        std::cout << e.what()<< std::endl;
+    }
+
     backend_ = std::make_shared<Backend>();
     map_ = std::make_shared<Map>();
     viewer_ = std::make_shared<Viewer>();

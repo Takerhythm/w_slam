@@ -151,6 +151,6 @@ class EdgeProjection
     SE3 _cam_ext;
 };
 
-}  // namespace myslam
+}  // namespace slam
 
 #endif  // SLAM_G2O_TYPES_H
