@@ -94,6 +94,10 @@ class Frontend {
      */
     int FindFeaturesInRight();
 
+    void undistortPoints();
+    void liftProjective(const Eigen::Vector2d &p, Eigen::Vector2d &P, const bool is_left) const;
+    void distortion(const Eigen::Vector2d &p_u, Eigen::Vector2d &d_u, const bool is_left) const;
+
     /**
      * Build the initial map with single image
      * @return true if succeed

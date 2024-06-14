@@ -38,11 +38,11 @@ void Backend::BackendLoop() {
         Map::KeyframesType active_kfs = map_->GetActiveKeyFrames();
         Map::LandmarksType active_landmarks = map_->GetActiveMapPoints();
         //g2o优化
-        //Optimize(active_kfs, active_landmarks);
+        Optimize(active_kfs, active_landmarks);
         //手写优化
         //Optimize2(active_kfs, active_landmarks);
         //高翔贺一家版本手写优化
-        Optimize4(active_kfs, active_landmarks);
+        //Optimize4(active_kfs, active_landmarks);
         //ceres优化
         //Optimize3(active_kfs, active_landmarks);
     }

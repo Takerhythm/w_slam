@@ -52,6 +52,7 @@ public:
     bool Step();
 
     Sophus::SE3d TrackStereo(const Mat& left, const Mat& right);
+    //Sophus::SE3d TrackStereoIMU(const Mat& left, const Mat& right,const double &timestamp, const vector<> &imu_data);
 
     /// 获取前端状态
     FrontendStatus GetFrontendStatus() const { return frontend_->GetStatus(); }

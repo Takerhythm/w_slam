@@ -12,7 +12,7 @@
 
 
 
-DEFINE_string(config_file, "/home/wmh/catkin_ws/src/slam/config/kitti.yaml", "config file path");
+DEFINE_string(config_file, "/home/wmh/catkin_ws/src/slam/config/euroc.yaml", "config file path");
 
 using namespace std;
 
@@ -65,16 +65,11 @@ int main(int argc, char **argv)
     auto* pSLAM = new slam::System(FLAGS_config_file , voc_file, sensor_type, enable_pangolin);
     ImageGrabber igb(pSLAM);
 
-    message_filters::Subscriber<sensor_msgs::Image> sub_img_left(node_handler, "/kitti/camera_gray_left/image_raw", 10);
-    message_filters::Subscriber<sensor_msgs::Image> sub_img_right(node_handler, "/kitti/camera_gray_right/image_raw", 10);
+    message_filters::Subscriber<sensor_msgs::Image> sub_img_left(node_handler, "/cam0/image_raw", 10);
+    message_filters::Subscriber<sensor_msgs::Image> sub_img_right(node_handler, "/cam1/image_raw", 10);
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
-//    typedef message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::Image> sync_pol;
     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), sub_img_left, sub_img_right);
     sync.registerCallback(boost::bind(&ImageGrabber::GrabStereo, &igb, _1, _2));
-
-    /*setup_publishers(node_handler, image_transport, node_name);
-    setup_services(node_handler, node_name);*/
-
 
     ros::spin();
 

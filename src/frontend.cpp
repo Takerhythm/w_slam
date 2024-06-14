@@ -4,8 +4,8 @@
 
 #include <memory>
 #include <opencv2/opencv.hpp>
-#include <utility>
 
+#include <utility>
 #include "algorithm.h"
 #include "backend.h"
 #include "config.h"
@@ -21,14 +21,19 @@ Frontend::Frontend() {
     gftt_ = cv::GFTTDetector::create(Config::Get<int>("num_features"), 0.01, 20);
     num_features_init_ = Config::Get<int>("num_features_init");
     num_features_ = Config::Get<int>("num_features");
+    num_features_tracking_bad_ = Config::Get<int>("num_features_tracking_bad");
+
+    std::cout << "num_features_tracking_bad: " << num_features_tracking_bad_ << std::endl;
 }
 
 Frame::Ptr Frontend::createFrame(const Mat& left, const Mat& right){
+    //resize
     cv::Mat image_left_resized, image_right_resized;
     cv::resize(left, image_left_resized, cv::Size(), 0.5, 0.5,
                cv::INTER_NEAREST);
     cv::resize(right, image_right_resized, cv::Size(), 0.5, 0.5,
                cv::INTER_NEAREST);
+
     auto new_frame = Frame::CreateFrame();
     new_frame->left_img_ = image_left_resized;
     new_frame->right_img_ = image_right_resized;
@@ -38,6 +43,14 @@ Frame::Ptr Frontend::createFrame(const Mat& left, const Mat& right){
 
 Sophus::SE3d Frontend::AddFrame(slam::Frame::Ptr frame) {
     current_frame_ = std::move(frame);
+
+    //todo 联合IMU初始化 帧数和窗口大小一致时 初始化IMU
+    //1.第一帧双目初始化
+    //2.连续跟踪 同时预积分
+    //3.到达窗口大小 IMU初始化
+    //4.超过窗口大小 边缘化 滑动窗口
+    //预积分
+    //preintegration()
 
     switch (status_) {
         case FrontendStatus::INITING:
@@ -63,7 +76,28 @@ bool Frontend::Track() {
     }
 
     TrackLastFrame();
+    //todo euroc 跟踪有问题 内点数太少
     tracking_inliers_ = EstimateCurrentPose();
+
+    /*std::vector<cv::Point2d> pts2D;
+    std::vector<cv::Point3d>pts3D;
+    for (size_t i = 0; i < current_frame_->features_left_.size(); ++i) {
+        auto mp = current_frame_->features_left_[i]->map_point_.lock();
+        if (mp) {
+            pts2D.emplace_back(current_frame_->features_left_[i]->position_.pt);
+            pts3D.emplace_back(cv::Point3d(mp->Pos().x(), mp->Pos().y(), mp->Pos().z()));
+        }
+    }
+    cv::Mat rvec, t;
+
+    bool pnp_succ;
+    pnp_succ = cv::solvePnP(pts3D, pts2D, camera_left_->K_Mat(), camera_left_->distortion_coeff_, rvec, t, 1);
+    Vec3 so3{rvec.at<double>(0), rvec.at<double>(1), rvec.at<double>(2)};
+    SO3 R = SO3::exp(so3);
+    Vec3 T_pnp{t.at<double>(0), t.at<double>(1), t.at<double>(2)};
+    SE3 T(R, T_pnp);
+    current_frame_->SetPose(T);
+    tracking_inliers_ = pts2D.size();*/
 
     if (tracking_inliers_ > num_features_tracking_) {
         // tracking good
@@ -102,6 +136,11 @@ bool Frontend::InsertKeyframe() {
 
     // track in right image
     FindFeaturesInRight();
+
+    if (camera_left_->distortion_coeff_.at<double>(0)!=0){
+        undistortPoints();
+    }
+
     // triangulate map points
     TriangulateNewPoints();
     // update backend because we have a new keyframe
@@ -111,6 +150,127 @@ bool Frontend::InsertKeyframe() {
     if (viewer_) viewer_->UpdateMap();
 
     return true;
+}
+void Frontend::undistortPoints(){
+    for (auto &cur_point : current_frame_->features_left_) {
+        Vec2 p = Vec2(cur_point->position_.pt.x, cur_point->position_.pt.y);
+        Vec2 P;
+        liftProjective(p, P,true);
+        cur_point->position_.pt.x = P[0];
+        cur_point->position_.pt.y = P[1];
+    }
+    for (auto &cur_point : current_frame_->features_right_) {
+        if(!cur_point){
+            continue;
+        }
+        Vec2 p = Vec2(cur_point->position_.pt.x, cur_point->position_.pt.y);
+        Vec2 P;
+        liftProjective(p, P,false);
+        cur_point->position_.pt.x = P[0];
+        cur_point->position_.pt.y = P[1];
+    }
+}
+
+
+void Frontend::liftProjective(const Eigen::Vector2d& p, Eigen::Vector2d& P,const bool is_left) const{
+    double mx_d, my_d, mx_u, my_u;
+    double fx, fy, cx, cy;
+    double m_inv_K11, m_inv_K13, m_inv_K22, m_inv_K23;
+    double k1 ,k2 ,p1 ,p2 ;
+    if (is_left){
+        fx = camera_left_->K()(0, 0);
+        fy = camera_left_->K()(1, 1);
+        cx = camera_left_->K()(0, 2);
+        cy = camera_left_->K()(1, 2);
+
+        k1 = camera_left_->distortion_coeff_.at<double>(0);
+        k2 = camera_left_->distortion_coeff_.at<double>(1);
+        p1 = camera_left_->distortion_coeff_.at<double>(2);
+        p2 = camera_left_->distortion_coeff_.at<double>(3);
+    }else{
+        fx = camera_right_->K()(0, 0);
+        fy = camera_right_->K()(1, 1);
+        cx = camera_right_->K()(0, 2);
+        cy = camera_right_->K()(1, 2);
+
+        k1 = camera_right_->distortion_coeff_.at<double>(0);
+        k2 = camera_right_->distortion_coeff_.at<double>(1);
+        p1 = camera_right_->distortion_coeff_.at<double>(2);
+        p2 = camera_right_->distortion_coeff_.at<double>(3);
+    }
+    //1/fx
+    m_inv_K11 = 1.0 / fx;
+    //-cx/fx
+    m_inv_K13 = -cx / fx;
+    //1/fy
+    m_inv_K22 = 1.0 / fy;
+    //-cy/fy
+    m_inv_K23 = -cy / fy;
+    // Lift points to normalised plane
+    //归一化平面坐标
+    mx_d = m_inv_K11 * p(0) + m_inv_K13;
+    my_d = m_inv_K22 * p(1) + m_inv_K23;
+
+    double mx2_d, my2_d, mxy_d, rho2_d, rho4_d, radDist_d, Dx_d, Dy_d, inv_denom_d;
+    mx2_d = mx_d*mx_d;
+    my2_d = my_d*my_d;
+    mxy_d = mx_d*my_d;
+    rho2_d = mx2_d+my2_d;
+    rho4_d = rho2_d*rho2_d;
+    radDist_d = k1*rho2_d+k2*rho4_d;
+    /*Dx_d = mx_d*radDist_d + p2*(rho2_d+2*mx2_d) + 2*p1*mxy_d;
+    Dy_d = my_d*radDist_d + p1*(rho2_d+2*my2_d) + 2*p2*mxy_d;
+    inv_denom_d = 1/(1+4*k1*rho2_d+6*k2*rho4_d+8*p1*my_d+8*p2*mx_d);
+
+    mx_u = mx_d - inv_denom_d*Dx_d;
+    my_u = my_d - inv_denom_d*Dy_d;*/
+
+    mx_u = mx_d*(1+radDist_d)+2*p1*mxy_d+p2*(rho2_d+2*mx2_d);
+    my_u = my_d*(1+radDist_d)+2*p2*mxy_d+p1*(rho2_d+2*my2_d);
+
+    mx_u = mx_u * fx + cx;
+    my_u = my_u * fy + cy;
+    /*// Recursive distortion model
+    int n = 8;
+    Eigen::Vector2d d_u;
+    distortion(Eigen::Vector2d(mx_d, my_d), d_u,is_left);
+    // Approximate value
+    mx_u = mx_d - d_u(0);
+    my_u = my_d - d_u(1);
+
+    for (int i = 1; i < n; ++i)
+    {
+        distortion(Eigen::Vector2d(mx_u, my_u), d_u,is_left);
+        mx_u = mx_d - d_u(0);
+        my_u = my_d - d_u(1);
+    }*/
+    // Obtain a projective ray
+    P << mx_u, my_u, 1.0;
+}
+
+
+void Frontend::distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u,bool is_left) const{
+    double k1 ,k2 ,p1 ,p2 ;
+    if(is_left){
+        k1 = camera_left_->distortion_coeff_.at<double>(0);
+        k2 = camera_left_->distortion_coeff_.at<double>(1);
+        p1 = camera_left_->distortion_coeff_.at<double>(2);
+        p2 = camera_left_->distortion_coeff_.at<double>(3);
+    }else{
+        k1 = camera_right_->distortion_coeff_.at<double>(0);
+        k2 = camera_right_->distortion_coeff_.at<double>(1);
+        p1 = camera_right_->distortion_coeff_.at<double>(2);
+        p2 = camera_right_->distortion_coeff_.at<double>(3);
+    }
+    double mx2_u, my2_u, mxy_u, rho2_u, rad_dist_u;
+
+    mx2_u = p_u(0) * p_u(0);
+    my2_u = p_u(1) * p_u(1);
+    mxy_u = p_u(0) * p_u(1);
+    rho2_u = mx2_u + my2_u;
+    rad_dist_u = k1 * rho2_u + k2 * rho2_u * rho2_u;
+    d_u << p_u(0) * rad_dist_u + 2.0 * p1 * mxy_u + p2 * (rho2_u + 2.0 * mx2_u),
+            p_u(1) * rad_dist_u + 2.0 * p2 * mxy_u + p1 * (rho2_u + 2.0 * my2_u);
 }
 
 void Frontend::SetObservationsForKeyFrame() {
@@ -169,13 +329,13 @@ int Frontend::EstimateCurrentPose() {
     optimizer.setAlgorithm(solver);
 
     // vertex
-    VertexPose *vertex_pose = new VertexPose();  // camera vertex_pose
+    auto *vertex_pose = new VertexPose();  // camera vertex_pose
     vertex_pose->setId(0);
     vertex_pose->setEstimate(current_frame_->Pose());
     optimizer.addVertex(vertex_pose);
 
-    // K
-    Mat33 K = camera_left_->K();
+    // K_left
+    Mat33 K_left = camera_left_->K();
 
     // edges
     int index = 1;
@@ -185,8 +345,7 @@ int Frontend::EstimateCurrentPose() {
         auto mp = current_frame_->features_left_[i]->map_point_.lock();
         if (mp) {
             features.push_back(current_frame_->features_left_[i]);
-            EdgeProjectionPoseOnly *edge =
-                new EdgeProjectionPoseOnly(mp->pos_, K);
+            auto *edge = new EdgeProjectionPoseOnly(mp->pos_, K_left);
             edge->setId(index);
             edge->setVertex(0, vertex_pose);
             edge->setMeasurement(
@@ -282,7 +441,6 @@ int Frontend::TrackLastFrame() {
             num_good_pts++;
         }
     }
-
     LOG(INFO) << "Find " << num_good_pts << " in the last image.";
     return num_good_pts;
 }
@@ -292,6 +450,9 @@ bool Frontend::StereoInit() {
     int num_coor_features = FindFeaturesInRight();
     if (num_coor_features < num_features_init_) {
         return false;
+    }
+    if (camera_left_->distortion_coeff_.at<double>(0) != 0 ){
+        undistortPoints();
     }
 
     BuildInitMap();
@@ -318,7 +479,6 @@ int Frontend::DetectFeatures() {
             std::make_shared<Feature>(current_frame_, kp));
         cnt_detected++;
     }
-
     LOG(INFO) << "Detect " << cnt_detected << " new features";
     return cnt_detected;
 }
@@ -401,6 +561,7 @@ bool Frontend::BuildInitMap() {
 }
 
 bool Frontend::Reset() {
+    //todo 重置系统状态
     LOG(INFO) << "Reset is not implemented. ";
     return true;
 }

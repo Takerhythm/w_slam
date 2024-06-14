@@ -85,8 +85,7 @@ Sophus::SE3d System::TrackStereo(const Mat& left, const Mat& right) {
     auto t1 = std::chrono::steady_clock::now();
     Sophus::SE3d Tcw = frontend_->AddFrame(new_frame);
     auto t2 = std::chrono::steady_clock::now();
-    auto time_used =
-            std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
+    auto time_used = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
     LOG(INFO) << "VO cost time: " << time_used.count() << " seconds.";
     return Tcw;
 }
